@@ -13,18 +13,15 @@ srand(SEED)
 t = collect(1.0:Float64(N))
 x = randn(N)
 
-t = t[1:5]
-x = x[1:5]
-
-errlog = open("errlog.txt", "w+")
-redirect_stderr(errlog)
+# t = t[1:10]
+# x = x[1:10]
 
 
-# this error deliberately creates a single segment atm
 info("running...")
 # @time tPrime, xPrime = TSS.sliding_window_interpolation(t, x, 2.0, L₁)
 # @time tPrime, xPrime = TSS.sliding_window_regression(t, x, 1.0, L₁)
-@time tPrime, xPrime = TSS.topdown_interpolation(t, x, 0.01, L₁)
+# @time tPrime, xPrime = TSS.topdown_interpolation(t, x, 5.0, L₂)
+@time tPrime, xPrime = TSS.topdown_regression(t, x, 0.1, L₂)
 info("done.")
 
 l1 = layer(x=t, y=x, Geom.point, Geom.line,

@@ -5,13 +5,15 @@ function topdown{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
                                        max_error::AbstractFloat,
                                        segment_func::Function,
                                        error_func::Function;
-                                       segment_join::Function=join_discontinuous!,
-                                       recursion_depth::Integer=0,
-                                       max_recursion_depth::Integer=5) # TODO debugging
+                                       segment_join::Function=join_discontinuous!)
+    # if segment has reached minimum length, there's nothing to do but fit a line
+    if length(t) ≤ 2
+        return segment_func(t, x)
+    end
     least_loss = Inf
-    split_node = -1
-    loss_left = Inf
-    loss_right = Inf
+    split_node = 2
+    least_loss_left = Inf
+    least_loss_right = Inf
     tseg_left_best = Vector{T}(0)
     xseg_left_best = Vector{U}(0)
     tseg_right_best = Vector{T}(0)
@@ -26,29 +28,23 @@ function topdown{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
         loss = loss_left + loss_right  # for now we just add the losses
         if loss < least_loss
             least_loss = loss
+            least_loss_left = loss_left
+            least_loss_right = loss_right
             split_node = i
             tseg_left_best, xseg_left_best = tseg_left, xseg_left
             tseg_right_best, xseg_right_best = tseg_right, xseg_right
         end
     end
 
-    # TODO somehow segment_join is getting passed an empty array somewhere
-
-    recursion_depth += 1
-
-    if loss_left > max_error && recursion_depth ≤ max_recursion_depth
+    if least_loss_left > max_error
         tseg_left_best, xseg_left_best = topdown(t[1:split_node], x[1:split_node], max_error,
-                                segment_func, error_func, segment_join=segment_join,
-                                recursion_depth=recursion_depth,
-                                max_recursion_depth=max_recursion_depth)
+                                segment_func, error_func, segment_join=segment_join)
     end
 
-    if loss_right > max_error && recursion_depth ≤ max_recursion_depth
+    if least_loss_right > max_error
         tseg_right_best, xseg_right_best = topdown(t[split_node:end], 
                                     x[split_node:end], max_error,
-                                    segment_func, error_func, segment_join=segment_join,
-                                    recursion_depth=recursion_depth,
-                                    max_recursion_depth=max_recursion_depth)
+                                    segment_func, error_func, segment_join=segment_join)
     end
 
     segment_join(tseg_left_best, tseg_right_best)
