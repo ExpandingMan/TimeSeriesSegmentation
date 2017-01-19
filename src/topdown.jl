@@ -1,4 +1,5 @@
 
+# TODO one can re-use many of the segments. setting up for that is a pain in the ass
 
 
 function topdown{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
@@ -6,11 +7,12 @@ function topdown{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
                                        segment_func::Function,
                                        error_func::Function;
                                        segment_join::Function=join_discontinuous!)
+    @assert length(t) == length(x) "Invalid time series axis."
     # if segment has reached minimum length, there's nothing to do but fit a line
     if length(t) ≤ 2
         return segment_func(t, x)
     end
-    least_loss = Inf
+    least_loss = Inf  # we keep this in case we want to define it differently later
     split_node = 2
     least_loss_left = Inf
     least_loss_right = Inf

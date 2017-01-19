@@ -13,6 +13,7 @@ function sliding_window{T<:Number, U<:Number}(t::Vector{T},
                                               error_func::Function;
                                               segment_join::Function=join_discontinuous!,
                                               anchor::Integer=1)
+    @assert length(t) == length(x) "Invalid time series axis."
     # it's not possible to know the size of these beforehand
     tout = Vector{T}(1)  # these are the output vectors
     xout = Vector{U}(1)
