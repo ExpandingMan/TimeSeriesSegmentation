@@ -5,7 +5,7 @@
     This algorithm is a horrible mess and very inefficient, but it works.
     I think the best way to clean it up is to create some sort of ``segment" type.
     However, ideally that should wrap a time-series object, and I'm waiting for support
-    of time-series with floating point axes to be merged into TimeSeries.
+    of time-series with floating point axes to be merged into TimeSeries master.
 
     So, I really should revisit this and rewrite it once that is done.
 ======#

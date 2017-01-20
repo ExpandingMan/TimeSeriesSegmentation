@@ -18,8 +18,8 @@ x = randn(N)
 
 
 info("running...")
-# @time tPrime, xPrime = TSS.sliding_window_interpolation(t, x, 2.0, L₁)
-# @time tPrime, xPrime = TSS.sliding_window_regression(t, x, 1.0, L₁)
+# @time tPrime, xPrime = TSS.slidingwindow_interpolation(t, x, 2.0, L₁)
+# @time tPrime, xPrime = TSS.slidingwindow_regression(t, x, 1.0, L₁)
 # @time tPrime, xPrime = TSS.topdown_interpolation(t, x, 5.0, L₂)
 # @time tPrime, xPrime = TSS.topdown_regression(t, x, 0.1, L₂)
 @time tPrime, xPrime = TSS.bottomup_interpolation(t, x, 5.0, L₂)
