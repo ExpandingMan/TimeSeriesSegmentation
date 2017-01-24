@@ -1,75 +1,92 @@
 
-# TODO one can re-use many of the segments. setting up for that is a pain in the ass
+#========================================================================================
+    NOTE:
+    Currently the way this is defined this will split into  two segments even with
+    max_error → ∞.  This is not a bug!  But perhaps should be changed?
+========================================================================================#
 
-
-function topdown{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
-                                       max_error::AbstractFloat,
-                                       segment_func::Function,
-                                       error_func::Function;
-                                       segment_join::Function=join_discontinuous!)
+function _topdown{T<:Number,U<:Number,S}(t::Vector{T},
+                                         x::Vector{U},
+                                         max_error::AbstractFloat,
+                                         segment_construct::Function,
+                                         ::Type{S}=LinearSegment{T,U};
+                                         loss_metric::Function=L₂)
     @assert length(t) == length(x) "Invalid time series axis."
-    # if segment has reached minimum length, there's nothing to do but fit a line
+    # if segment has reach minimum length, there's nothing to do but fit a line
     if length(t) ≤ 2
-        return segment_func(t, x)
+        return SegmentSeries{S}([segment_construct(t, x)], segment_construct)
     end
-    least_loss = Inf  # we keep this in case we want to define it differently later
+    least_loss_l = Inf
+    least_loss_r = Inf
     split_node = 2
-    least_loss_left = Inf
-    least_loss_right = Inf
-    tseg_left_best = Vector{T}(0)
-    xseg_left_best = Vector{U}(0)
-    tseg_right_best = Vector{T}(0)
-    xseg_right_best = Vector{U}(0)
+    lseg_best = nothing  # these should never get returned
+    rseg_best = nothing
     for i ∈ 2:(length(t)-1)
-        tleft = t[1:i];  tright = t[i:end]
-        xleft = x[1:i];  xright = x[i:end]
-        tseg_left, xseg_left   = segment_func(tleft, xleft)
-        tseg_right, xseg_right = segment_func(tright, xright)
-        loss_left  = error_func(tseg_left, xseg_left, tleft, xleft)
-        loss_right = error_func(tseg_right, xseg_right, tright, xright)
-        loss = loss_left + loss_right  # for now we just add the losses
-        if loss < least_loss
-            least_loss = loss
-            least_loss_left = loss_left
-            least_loss_right = loss_right
+        tl, xl = window(t, x, 1:i)
+        tr, xr = window(t, x, i:endof(t))
+        lseg = segment_construct(tl, xl)
+        rseg = segment_construct(tr, xr)
+        loss_l = loss(loss_metric, lseg, tl, xl)
+        loss_r = loss(loss_metric, rseg, tr, xr)
+        if loss_l + loss_r < least_loss_l + least_loss_r
+            least_loss_l = loss_l
+            least_loss_r = loss_r
             split_node = i
-            tseg_left_best, xseg_left_best = tseg_left, xseg_left
-            tseg_right_best, xseg_right_best = tseg_right, xseg_right
+            lseg_best = lseg
+            rseg_best = rseg
         end
     end
 
-    if least_loss_left > max_error
-        tseg_left_best, xseg_left_best = topdown(t[1:split_node], x[1:split_node], max_error,
-                                segment_func, error_func, segment_join=segment_join)
+    if least_loss_l > max_error
+        ssl = _topdown(t[1:split_node], x[1:split_node], max_error, segment_construct,
+                       S, loss_metric=loss_metric)
+    else
+        ssl = SegmentSeries{S}([lseg_best], segment_construct)
     end
 
-    if least_loss_right > max_error
-        tseg_right_best, xseg_right_best = topdown(t[split_node:end], 
-                                    x[split_node:end], max_error,
-                                    segment_func, error_func, segment_join=segment_join)
+    if least_loss_r > max_error
+        ssr = _topdown(t[split_node:end], x[split_node:end], max_error, segment_construct,
+                       S, loss_metric=loss_metric)
+    else
+        ssr = SegmentSeries{S}([rseg_best], segment_construct)
     end
 
-    segment_join(tseg_left_best, tseg_right_best)
-    segment_join(xseg_left_best, xseg_right_best)
+    append!(ssl, ssr)
 
-    tseg_left_best, xseg_left_best
+    ssl
 end
 
-
-function topdown_interpolation{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
-                                                     max_error::AbstractFloat,
-                                                     err_func::Function=L₂;
-                                                     segment_join::Function=join_continuous!)
-    E(t1, x1, t2, x2) = error_linear(t1, x1, t2, x2, err_func)
-    topdown(t, x, max_error, segment_interpolation, E, segment_join=segment_join)
+# this is to keep the interface consistent with other methods, because of return_points
+function topdown{T<:Number,U<:Number,S}(t::Vector{T}, x::Vector{U}, max_error::AbstractFloat,
+                                        segment_construct::Function, 
+                                        ::Type{S}=LinearSegment{T,U};
+                                        loss_metric::Function=L₂,
+                                        return_points::Bool=false)
+    o = _topdown(t, x, max_error, segment_construct, S, loss_metric=loss_metric)
+    if return_points
+        return pointseries(o, check=false)
+    end
+    o
 end
+export topdown
 
 
-function topdown_regression{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
-                                                  max_error::AbstractFloat,
-                                                  err_func::Function=L₂;
-                                                  segment_join::Function=join_discontinuous!)
-    E(t1, x1, t2, x2) = error_linear(t1, x1, t2, x2, err_func)
-    topdown(t, x, max_error, segment_regression, E, segment_join=segment_join)
+function topdown_interpolation{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U},
+                                                    max_error::AbstractFloat;
+                                                    loss_metric::Function=L₂,
+                                                    return_points::Bool=false)
+    topdown(t, x, max_error, LinearSegmentInterpolation, LinearSegment{T,U},
+            loss_metric=loss_metric, return_points=return_points)
 end
+export topdown_interpolation
+
+
+function topdown_regression{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U},
+                                                 max_error::AbstractFloat;
+                                                 loss_metric::Function=L₂,
+                                                 return_points::Bool=false)
+    topdown(t, x, max_error, LinearSegmentRegression, LinearSegment{T,U},
+            loss_metric=loss_metric, return_points=return_points)
+end
+export topdown_regression
 

@@ -1,104 +1,108 @@
 
-#============
-    TODO
+# TODO this might get screwed up if we have more segment types
 
-    This algorithm is a horrible mess and very inefficient, but it works.
-    I think the best way to clean it up is to create some sort of ``segment" type.
-    However, ideally that should wrap a time-series object, and I'm waiting for support
-    of time-series with floating point axes to be merged into TimeSeries master.
-
-    So, I really should revisit this and rewrite it once that is done.
-======#
+# TODO might improve performance if we make array eltypes Any so things aren't getting
+# shifted around in memory
 
 
-function bottomup{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
-                                        max_error::AbstractFloat,
-                                        segment_func::Function,
-                                        error_func::Function;
-                                        segment_join::Function=join_discontinuous!)
-    @assert length(t) == length(x) "Invalid time series axis."
-    all_segs = [segment_func(t[i:(i+1)], x[i:(i+1)]) for i ∈ 1:length(t)-1]
-    tsegs = Dict(i=>all_segs[i][1] for i ∈ 1:length(all_segs))
-    xsegs = Dict(i=>all_segs[i][2] for i ∈ 1:length(all_segs))
-    lconnect = Dict(i=>(i-1) for i ∈ 2:length(t))
-    rconnect = Dict(i=>(i+1) for i ∈ 1:length(t)-1)
+function bottomup{T<:Number,U<:Number,S}(t::Vector{T}, x::Vector{U},
+                                         max_error::AbstractFloat,
+                                         segment_construct::Function,
+                                         ::Type{S}=LinearSegment{T,U};
+                                         loss_metric::Function=L₂,
+                                         return_points::Bool=false)
+    ss = SegmentSeries(t, x, segment_construct)
+    # store original index range for each segment
+    ranges = [(i, i+1) for i ∈ 1:length(ss)]
 
-    losses = Dict();  sizehint!(losses, length(t)-2)
-    for i ∈ 2:(length(t)-1)  # loop for initializing losses
-        tnow = t[(i-1): (i+1)]
-        xnow = x[(i-1): (i+1)]
-        tseg, xseg = segment_func(tnow, xnow)
-        losses[i] = error_func(tseg, xseg, tnow, xnow)
-    end
-    losses_rev = Dict(v=>k for (k, v) ∈ losses)
-
-    min_loss = minimum(collect(values(losses)))
-
-    # second condition checks if we are down to only one segment
-    while min_loss < max_error && length(values(tsegs)) > 1
-        i = losses_rev[min_loss]
-        idx_left  = lconnect[i]
-        idx_right = rconnect[i]
-        tnow = t[idx_left:idx_right]
-        xnow = x[idx_left:idx_right]
-        tseg, xseg = segment_func(tnow, xnow)
-        delete!(tsegs, idx_left); delete!(xsegs, idx_left)
-        delete!(tsegs, i); delete!(xsegs, i)
-        delete!(losses, i)
-        delete!(losses_rev, min_loss)
-        delete!(lconnect, i)
-        delete!(rconnect, i)
-        lconnect[idx_right] = idx_left
-        rconnect[idx_left]  = idx_right
-        # computing new losses, unless reached end
-        if idx_left > 1
-            tnow_left = t[lconnect[idx_left]: idx_right]
-            xnow_left = x[lconnect[idx_left]: idx_right]
-            tseg_left, xseg_left = segment_func(tnow_left, xnow_left)
-            losses[idx_left] = error_func(tseg_left, xseg_left, tnow_left, xnow_left)
-        end
-        if idx_right < length(t)
-            tnow_right = t[idx_left:rconnect[idx_right]]
-            xnow_right = x[idx_left:rconnect[idx_right]]
-            tseg_right, xseg_right = segment_func(tnow_right, xnow_right)
-            losses[idx_right] = error_func(tseg_right, xseg_right, tnow_right, xnow_right)
-        end
-        # TODO fix this
-        losses_rev = Dict(v=>k for (k, v) ∈ losses)
-        if length(losses) > 0
-            min_loss = minimum(collect(values(losses)))
-        else
-            min_loss = Inf  # this will cause the loop to exit
-        end
-        # assigning new segments
-        tsegs[idx_left] = tseg
-        xsegs[idx_left] = xseg
+    # initialize merge costs
+    merge_costs = Vector{Float64}(length(ss))
+    merge_segs = Vector{S}(length(ss))
+    for i ∈ 1:length(ss)
+        _compute_merge_cost!(ss, i, t, x, ranges, merge_segs, merge_costs,
+                             segment_construct, loss_metric)
     end
 
-    tout = reduce(segment_join, [tsegs[i] for i ∈ sort(collect(keys(tsegs)))])
-    xout = reduce(segment_join, [xsegs[i] for i ∈ sort(collect(keys(xsegs)))])
+    min_cost, min_idx = findmin(merge_costs)
 
-    tout, xout
+    while min_cost < max_error && length(ss) > 1
+        idx_l = ranges[min_idx][1]
+        idx_r = ranges[min_idx+1][2]  # this should always work because we merged with next
+        deleteat!(ss, min_idx+1)
+        deleteat!(ranges, min_idx+1)
+        ss[min_idx] = merge_segs[min_idx]
+        ranges[min_idx] = (idx_l, idx_r)
+        # **New series has been established**
+        deleteat!(merge_costs, min_idx+1)
+        deleteat!(merge_segs, min_idx+1)
+        if min_idx > 1
+            _compute_merge_cost!(ss, min_idx-1, t, x, ranges, merge_segs, merge_costs,
+                                 segment_construct, loss_metric)
+        end
+        if min_idx ≤ length(ss)
+            _compute_merge_cost!(ss, min_idx, t, x, ranges, merge_segs, merge_costs,
+                                 segment_construct, loss_metric)
+        end
+        min_cost, min_idx = findmin(merge_costs)
+    end
+    if return_points
+        return pointseries(ss, check=false)
+    end
+    ss
+end
+export bottomup
+
+
+# helper function for bottomup
+function _compute_merge_cost!{T<:Number,U<:Number}(ss::SegmentSeries, i::Integer,
+                                                   t::Vector{T}, x::Vector{U},
+                                                   ranges::Vector,
+                                                   merge_segs::Vector,
+                                                   merge_costs::Vector,
+                                                   segment_construct::Function,
+                                                   loss_metric::Function)
+    if i == length(ss)  # default behavior if there's nothing to merge with
+        seg, cost = ss[end], Inf
+    else
+        idx_l = ranges[i][1]
+        idx_r = ranges[i+1][2]
+        seg, cost = merge(ss[i:(i+1)], t[idx_l:idx_r], x[idx_l:idx_r],
+                          segment_construct, loss_metric=loss_metric)
+    end
+    merge_segs[i] = seg
+    merge_costs[i] = cost
+    seg, cost
 end
 
 
-function bottomup_interpolation{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
-                                                      max_error::AbstractFloat,
-                                                      err_func::Function=L₂;
-                                                      segment_join::Function=join_continuous!)
-    E(t1, x1, t2, x2) = error_linear(t1, x1, t2, x2, err_func)
-    bottomup(t, x, max_error, segment_interpolation, E, segment_join=segment_join)
+# this might belong in segments.jl but it's nice to have here
+function merge{T<:Number,U<:Number,S}(ss::SegmentSeries{S}, t::Vector{T}, x::Vector{U},
+                                      segment_construct::Function;
+                                      loss_metric::Function=L₂)
+    @assert length(ss) == 2 "Can only merge two segments."
+    seg = segment_construct(t, x)
+    err = loss(loss_metric, seg, t, x)
+    seg, err
 end
+export merge
 
 
-function bottomup_regression{T<:Number, U<:Number}(t::Vector{T}, x::Vector{U},
-                                                   max_error::AbstractFloat,
-                                                   err_func::Function=L₂;
-                                                   segment_join::Function=join_discontinuous!)
-    E(t1, x1, t2, x2) = error_linear(t1, x1, t2, x2, err_func)
-    bottomup(t, x, max_error, segment_regression, E, segment_join=segment_join)
+function bottomup_interpolation{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U},
+                                                     max_error::AbstractFloat;
+                                                     loss_metric::Function=L₂,
+                                                     return_points::Bool=false)
+    bottomup(t, x, max_error, LinearSegmentInterpolation, LinearSegment{T,U},
+             loss_metric=loss_metric, return_points=return_points)
 end
+export bottomup_interpolation
 
 
-
+function bottomup_regression{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U},
+                                                  max_error::AbstractFloat;
+                                                  loss_metric::Function=L₂,
+                                                  return_points::Bool=false)
+    bottomup(t, x, max_error, LinearSegmentRegression, LinearSegment{T,U},
+             loss_metric=loss_metric, return_points=return_points)
+end
+export bottomup_regression
 

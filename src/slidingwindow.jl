@@ -1,110 +1,63 @@
 
-# TODO add TimeArray functionality
 
-
-
-# TODO experiment with different termination conditions, can create false last segments
-
-# this is the core sliding window algorithm
-function slidingwindow{T<:Number, U<:Number}(t::Vector{T},
-                                             x::Vector{U},
-                                             max_error::AbstractFloat, 
-                                             segment_func::Function,
-                                             error_func::Function;
-                                             segment_join::Function=join_discontinuous!,
-                                             anchor::Integer=1)
-    @assert length(t) == length(x) "Invalid time series axis."
-    # it's not possible to know the size of these beforehand
-    tout = Vector{T}(1)  # these are the output vectors
-    xout = Vector{U}(1)
-    tout[1] = t[anchor]  # initialize first element
-    xout[1] = x[anchor]
-    while (anchor + 1) ≤ length(t)
+function slidingwindow{T<:Number,U<:Number,S}(t::Vector{T},
+                                              x::Vector{U},
+                                              max_error::AbstractFloat,
+                                              segment_construct::Function,
+                                              ::Type{S}=LinearSegment{T,U}; # segment type
+                                              loss_metric::Function=L₂,
+                                              anchor::Integer=1,
+                                              return_points::Bool=false)
+    @assert length(t) == length(x) "Invalid time series axis"
+    o = SegmentSeries{S}(segment_construct)
+    while anchor ≤ length(t) - 1
         i = 1
-        tnow = t[anchor:(anchor+i)]
-        xnow = x[anchor:(anchor+i)]
-        (segt, segx) = segment_func(tnow, xnow)
-        (prev_segt, prev_segx) = (segt, segx)
-        while (anchor+i+1) ≤ length(t) && error_func(segt, segx, tnow, xnow) < max_error
+        tnow, xnow = window(t, x, anchor:(anchor+i))
+        seg = segment_construct(tnow, xnow)  # initialize segment to check loss
+        prev_seg = seg
+        while loss(loss_metric, seg, tnow, xnow) < max_error
             i += 1
-            tnow = t[anchor:(anchor+i)]
-            xnow = x[anchor:(anchor+i)]
-            (prev_segt, prev_segx) = (segt, segx)
-            (segt, segx) = segment_func(tnow, xnow)
+            prev_seg = seg
+            if anchor+i > length(t)  # check if it's done because it hit the end
+                break
+            end
+            tnow, xnow = window(t, x, anchor:(anchor+i))
+            seg = segment_construct(tnow, xnow)
         end
-        segment_join(tout, prev_segt)
-        segment_join(xout, prev_segx)
+        push!(o, prev_seg)
         i -= 1
-        anchor += max(i, 1)  # not seeing how to get around this
+        anchor += max(i, 1)
     end
-    tout, xout
+    if return_points
+        return pointseries(o, check=false)
+    end
+    o
 end
+export slidingwindow
 
 
-# TODO consider changing the name of this to specify that it's linear
-# this is the default setup of sliding window for linear interpolation
-function slidingwindow_interpolation{T<:Number, U<:Number}(t::Vector{T},
-                                     x::Vector{U},
-                                     max_error::AbstractFloat,
-                                     err_func::Function=L₂;
-                                     segment_join::Function=join_continuous!,
-                                     anchor::Integer=1)
-    E(t1, x1, t2, x2) = error_linear(t1, x1, t2, x2, err_func)
-    slidingwindow(t, x, max_error, segment_interpolation, E, anchor=anchor,
-                  segment_join=segment_join)
+function slidingwindow_interpolation{T<:Number,U<:Number}(
+                                    t::Vector{T}, x::Vector{U},
+                                    max_error::AbstractFloat;
+                                    loss_metric::Function=L₂,
+                                    anchor::Integer=1,
+                                    return_points::Bool=false)
+    slidingwindow(t, x, max_error, LinearSegmentInterpolation, LinearSegment{T,U},
+                  loss_metric=loss_metric, anchor=anchor, return_points=return_points)
 end
+export slidingwindow_interpolation
 
 
-function slidingwindow_regression{T<:Number, U<:Number}(t::Vector{T},
-                                  x::Vector{U}, max_error::AbstractFloat,
-                                  err_func::Function=L₂;
-                                  segment_join::Function=join_discontinuous!,
-                                  anchor=1)
-    E(t1, x1, t2, x2) = error_linear(t1, x1, t2, x2, err_func)
-    slidingwindow(t, x, max_error, segment_regression, E, anchor=anchor,
-                  segment_join=segment_join)
+function slidingwindow_regression{T<:Number,U<:Number}(
+                                    t::Vector{T}, x::Vector{U},
+                                    max_error::AbstractFloat;
+                                    loss_metric::Function=L₂,
+                                    anchor::Integer=1,
+                                    return_points::Bool=false)
+    slidingwindow(t, x, max_error, LinearSegmentRegression, LinearSegment{T,U},
+                  loss_metric=loss_metric, anchor=anchor, return_points=return_points)
 end
+export slidingwindow_regression
 
 
-# these methods use TimeArray as input
-
-function slidingwindow{T<:Dates.Period,U,N,D,A}(
-                       ::Type{T},
-                       ta::TimeArray{U,N,D,A}, 
-                       max_error::AbstractFloat,
-                       segment_func::Function, error_func::Function,
-                       t0::D=ta.timestamp[1];
-                       segment_join::Function=join_discontinuous!,
-                       anchor::Integer=1)
-    t, x = convertaxis(T, ta, t0)
-    tout, xout = slidingwindow(t, x, max_error, segment_func, error_func,
-                               segment_join=sement_join, anchor=anchor)
-    convertaxis(T, tout, xout, t0)
-end
-
-function slidingwindow_interpolation{T<:Dates.Period,U,N,D,A}(
-                                     ::Type{T},
-                                     ta::TimeArray{U,N,D,A},
-                                     max_error::AbstractFloat,
-                                     t0::D=ta.timestamp[1];
-                                     err_func::Function=L₂,
-                                     segment_join::Function=join_continuous!,
-                                     anchor::Integer=1)
-    E(t1, x1, t2, x2) = error_linear(t1, x1, t2, x2, err_func)
-    slidingwindow(T, ta, max_error, segment_interpolation, E, t0,
-                  segment_join=segment_join, anchor=anchor)
-end
-
-function slidingwindow_regression{T<:Dates.Period,U,N,D,A}(
-                                  ::Type{T},
-                                  ta::TimeArray{U,N,D,A},
-                                  max_error::AbstractFloat,
-                                  t0::D=ta.timestamp[1];
-                                  err_func::Function=L₂,
-                                  segment_join::Function=join_discontinuous!,
-                                  anchor::Integer=1)
-    E(t1, x1, t2, x2) = error_linear(t1, x1, t2, x2, err_func)
-    slidingwindow(T, ta, max_error, segment_regression, E, t0,
-                  segment_join=segment_join, anchor=anchor)
-end
 

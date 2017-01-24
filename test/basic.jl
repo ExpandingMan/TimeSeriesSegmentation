@@ -13,22 +13,26 @@ srand(SEED)
 t = collect(1.0:Float64(N))
 x = randn(N)
 
-# t = t[1:10]
-# x = x[1:10]
+# t = t[1:20]
+# x = x[1:20]
 
 
 info("running...")
-# @time tPrime, xPrime = TSS.slidingwindow_interpolation(t, x, 2.0, L₁)
-# @time tPrime, xPrime = TSS.slidingwindow_regression(t, x, 1.0, L₁)
-# @time tPrime, xPrime = TSS.topdown_interpolation(t, x, 5.0, L₂)
-# @time tPrime, xPrime = TSS.topdown_regression(t, x, 0.1, L₂)
-@time tPrime, xPrime = TSS.bottomup_interpolation(t, x, 5.0, L₂)
-# @time tPrime, xPrime = TSS.bottomup_regression(t, x, 1.0, L₂)
+# @time ss = slidingwindow_interpolation(t, x, 2.0)
+# @time ss = slidingwindow_regression(t, x, 2.0)
+# @time ss = topdown_interpolation(t, x, 0.0)
+# @time ss = topdown_regression(t, x, 2.0)
+# @time ss = bottomup_interpolation(t, x, 3.0)
+@time ss = bottomup_regression(t, x, 5.0)
 info("done.")
+
+f = getfunction(ss)
+tPrime, xPrime = pointseries(ss)
 
 l1 = layer(x=t, y=x, Geom.point, Geom.line,
            Theme(default_color=colorant"red"))
 l2 = layer(x=tPrime, y=xPrime, Geom.point, Geom.line)
+# l2 = layer(f, 1.0, 100.0)
 p = plot(l2, l1, Guide.xlabel("t"), Guide.ylabel("x"))
 draw(PNG(PLOT_FILE, 1536px, 1024px), p)
 
