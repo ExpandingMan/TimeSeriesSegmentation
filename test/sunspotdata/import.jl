@@ -2,8 +2,8 @@ using DataFrames
 using TimeSeries
 
 
-const SOURCE_DAILY = "sunspots_daily.csv"
-const SOURCE_MONTHLY = "sunspots_monthly.csv"
+const SOURCE_DAILY = "sunspotdata/sunspots_daily.csv"
+const SOURCE_MONTHLY = "sunspotdata/sunspots_monthly.csv"
 
 
 function get_sunspot_daily_df(sourcefile::String=SOURCE_DAILY)
@@ -38,7 +38,7 @@ function get_sunspot_daily_ts(df::DataFrame)
 end
 get_sunspot_daily_ts(sourcefile::String=SOURCE_DAILY) =
     get_sunspot_daily_ts(get_sunspot_daily_df(sourcefile))
-get_sunspot_daily_ts(sourcefile::String=SOURCE_DAILY, col::Union{Symbol, String}) =
+get_sunspot_daily_ts(col::Union{Symbol, String}, sourcefile::String=SOURCE_DAILY) =
     get_sunspot_daily_ts(sourcefile)[string(col)]
 
 
@@ -50,7 +50,7 @@ function get_sunspot_monthly_ts(df::DataFrame)
 end
 get_sunspot_monthly_ts(sourcefile::String=SOURCE_MONTHLY) =
     get_sunspot_monthly_ts(get_sunspot_monthly_df(sourcefile))
-get_sunspot_monthly_ts(sourcefile::String=SOURCE_MONTHLY, col::Union{Symbol, String}) =
+get_sunspot_monthly_ts(col::Union{Symbol, String}, sourcefile::String=SOURCE_MONTHLY) =
     get_sunspot_monthly_ts(sourcefile)[string(col)]
 
 

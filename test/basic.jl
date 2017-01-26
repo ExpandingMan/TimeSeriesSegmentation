@@ -5,7 +5,7 @@ TSS = TimeSeriesSegmentation
 
 const PLOT_FILE = "plots/basic_test_1.png"
 
-const N = 100
+const N = 50
 const SEED = 999
 
 srand(SEED)
@@ -13,16 +13,13 @@ srand(SEED)
 t = collect(1.0:Float64(N))
 x = randn(N)
 
-# t = t[1:20]
-# x = x[1:20]
-
 
 info("running...")
-# @time ss = slidingwindow_interpolation(t, x, 2.0)
-# @time ss = slidingwindow_regression(t, x, 2.0)
-# @time ss = topdown_interpolation(t, x, 0.0)
-# @time ss = topdown_regression(t, x, 2.0)
-# @time ss = bottomup_interpolation(t, x, 3.0)
+# @time ss = slidingwindow_interpolation(t, x, 10.0)
+# @time ss = slidingwindow_regression(t, x, 10.0)
+# @time ss = topdown_interpolation(t, x, 10.0)
+# @time ss = topdown_regression(t, x, 10.0)
+# @time ss = bottomup_interpolation(t, x, 10.0)
 @time ss = bottomup_regression(t, x, 5.0)
 info("done.")
 

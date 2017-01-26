@@ -69,10 +69,19 @@ export SegmentSeries
 
 
 # creates a segment series out of a time series
+# conversions from TimeArray are found in timearray.jl
 function SegmentSeries{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U}, 
-                                            segment_construct::Function)
+                                            segment_construct::Function;
+                                            units::Union{DataType,Void}=nothing,
+                                            t0::DateTime=DateTime())
     segs = [segment_construct(t[i:(i+1)], x[i:(i+1)]) for i ∈ 1:(length(t)-1)]
-    SegmentSeries{LinearSegment{T,U}}(segs, segment_construct)
+    o = SegmentSeries{LinearSegment{T,U}}(segs, segment_construct)
+    if units ≠ nothing
+        @assert units <: Dates.Period "Units must be of type `Dates.Period`."
+        o.units = units
+    end
+    o.zero = t0
+    o
 end
 
 function SegmentSeries{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U})
@@ -82,11 +91,11 @@ end
 
 # checks whether a segment series is continuous
 function _ss_continuous(ss::AbstractSegmentSeries)
-    tcont = [ss[i].t1 ≈ ss[i+1] for i ∈ 1:(length(ss)-1)]
+    tcont = [ss[i].t1 ≈ ss[i+1].t0 for i ∈ 1:(length(ss)-1)]
     if !prod(tcont)
         return false
     end
-    xcont = [ss[i].x1 ≈ ss[i+1] for i ∈ 1:(length(ss)-1)]
+    xcont = [ss[i].x1 ≈ ss[i+1].t0 for i ∈ 1:(length(ss)-1)]
     if !prod(xcont)
         return false
     end
@@ -191,22 +200,37 @@ function _pointseries_discontinuous(ss::SegmentSeries)
     t, x
 end
 
-"""
-    pointseries(ss[; check=false])
+# TODO ideally δ would depend on the length of the segment series
+function _pointseries_discontinuous_hack(ss::SegmentSeries, δ::AbstractFloat=DISCONTINUITY_δ)
+    f = getfunction(ss)
+    t = reduce(vcat, [ss[i].t0+δ, ss[i].t1-δ] for i ∈ 1:length(ss))
+    x = f.(t)
+    t, x
+end
 
-Converts a segment series to an ordinary time series.  If `check` the continuity of the 
-time-series will be rigorously re-checked.  Note that the method by which the segment
+                                    
+
+"""
+    pointseries(ss[; check_continuity=false, δ=10eps(Float32), degenerate=false])
+
+Converts a segment series to an ordinary time series.  If `check_continuity` the continuity 
+of the time-series will be rigorously re-checked.  Note that the method by which the segment
 series is joined to a series of points depends on whether it is continuous.  If it is
 continuous, the segments will simply be joined one to the other such that there is a single
-point between segments.  If it is discontinuous, the segments will be joined with all
-endpoints intact such that there are two points between segments.
+point between segments.  If it is discontinuous, it will be converted to a function and
+evaluated at the segment junctions ±δ.  If `degenerate`, a (possibly discontinuous) time
+series will be returned with two points exactly at each segment junction.
 """
-function pointseries(ss::SegmentSeries; check::Bool=false)
-    continuous!(ss, check=check)
+function pointseries(ss::SegmentSeries; check_continuity::Bool=false,
+                     δ::AbstractFloat=DISCONTINUITY_δ,
+                     degenerate::Bool=false)
+    continuous!(ss, check=check_continuity)
     if ss.cont
         return _pointseries_continuous(ss)
+    elseif degenerate
+        return _pointseries_discontinuous(ss)
     end
-    _pointseries_discontinuous(ss)
+    _pointseries_discontinuous_hack(ss, δ)
 end
 export pointseries
 
@@ -236,9 +260,12 @@ end
 
 """
     loss([loss_func, ]segment, t, x)
+    loss([loss_func, ]f, t, x)
 
 Computes the error of the segment relative to the points specified by `t,x`, according
 to the loss metric `loss_func`.  If no `loss_func` is given, this defaults to `L₂`.
+Alternatively, this can compute the error of an arbitrary function `f` relative to the
+points `t, x`.
 """
 function loss{T<:Number,U<:Number}(loss_func::Function, f::Function,
                                    t::Vector{T}, x::Vector{U})
@@ -323,12 +350,17 @@ end
 """
     getfunction(s)
     getfunction(ss)
+    getfunction(ts)
 
 Returns the function of the segment `s` or `SegmentSeries` `ss`.
 
 Returns the function of the `SegmentSeries` `ss`.  Note that if the `SegmentSeries` is 
 discontinuous at `t₀` the function is defined using the segment found at `t = t₀ + ɛ` where
-`ɛ` is positive at `t₀`.
+`ɛ > 0` at `t₀`.
+
+This can also be called on a `TimeArray` object.  In this case, it returns a function 
+corresponding to linear interpolation between points in the time series.  This makes the
+most sense to use when the sampling frequency is ≲ the time series lattice spacing.
 """
 getfunction(s::LinearSegment) = ξ -> slope(s)*ξ + intercept(s)
 function getfunction{S<:LinearSegment}(ss::SegmentSeries{S})
@@ -338,6 +370,12 @@ function getfunction{S<:LinearSegment}(ss::SegmentSeries{S})
         slope(ss[idx])*t + intercept(ss[idx]) 
     end
 end
+
+function getfunction{T<:Dates.Period}(ts::TimeArray, ::Type{T})
+    ss = SegmentSeries(ts, T)
+    getfunction(ss)
+end
+
 export getfunction
 
 

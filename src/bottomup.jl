@@ -5,12 +5,22 @@
 # shifted around in memory
 
 
+"""
+    bottomup(t, x, max_error, segment_construct, segment_type=LinearSegment
+             [; loss_metric=L₂])
+            
+Generates a segment series from the time series `t, x` using the bottom-up algorithm
+with maximum error `max_error`.  Segments will be constructed using the function
+`segment_construct`, i.e. usually this is either `LinearSegmentInterpolation` or 
+`LinearSegmentRegression`.  The segment produced by this function must be of type
+`segment_type` (one should always use the default value until non-linear segments are
+implemented).
+"""
 function bottomup{T<:Number,U<:Number,S}(t::Vector{T}, x::Vector{U},
                                          max_error::AbstractFloat,
                                          segment_construct::Function,
                                          ::Type{S}=LinearSegment{T,U};
-                                         loss_metric::Function=L₂,
-                                         return_points::Bool=false)
+                                         loss_metric::Function=L₂)
     ss = SegmentSeries(t, x, segment_construct)
     # store original index range for each segment
     ranges = [(i, i+1) for i ∈ 1:length(ss)]
@@ -44,9 +54,6 @@ function bottomup{T<:Number,U<:Number,S}(t::Vector{T}, x::Vector{U},
                                  segment_construct, loss_metric)
         end
         min_cost, min_idx = findmin(merge_costs)
-    end
-    if return_points
-        return pointseries(ss, check=false)
     end
     ss
 end
@@ -86,23 +93,76 @@ function merge{T<:Number,U<:Number,S}(ss::SegmentSeries{S}, t::Vector{T}, x::Vec
 end
 export merge
 
+# TODO clean up all these damn methods with macros
 
+"""
+    bottomup_interpolation(t, x, max_error[; loss_metric=L₂]) 
+    bottomup_interpolation(ts, units, max_error[; loss_metric=L₂])
+                    
+Generates a segment series from the time series `t, x` using the bottom-up algorithm,
+generating segments using linear interpolation between end-points and with maximum error
+`max_error`.  The loss metric `loss_metric` will be used to evaluate error.
+
+Alternatively one can pass a `TimeArray` object directly, in which case one must also 
+specify the units of the resulting segment series (i.e. what period of time should correspond
+to 1.0).
+"""
 function bottomup_interpolation{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U},
                                                      max_error::AbstractFloat;
-                                                     loss_metric::Function=L₂,
-                                                     return_points::Bool=false)
+                                                     loss_metric::Function=L₂)
     bottomup(t, x, max_error, LinearSegmentInterpolation, LinearSegment{T,U},
-             loss_metric=loss_metric, return_points=return_points)
+             loss_metric=loss_metric)
+end
+function bottomup_interpolation{T,U<:Number,N,D,A<:Vector}(ts::TimeArray{U,N,D,A},
+                                                           ::Type{T},
+                                                           max_error::AbstractFloat;
+                                                           loss_metric::Function=L₂,
+                                                           return_timearray::Bool=false)
+    t, x = convertaxis(T, ts)
+    ss = bottomup_interpolation(t, x, max_error, loss_metric=loss_metric)
+    ss.units = T
+    ss.zero = ts.timestamp[1]
+    if return_timearray
+        f = getfunction(ss)
+        return TimeArray(ss.units, t, f.(t), ss.zero)
+    end
+    ss
 end
 export bottomup_interpolation
 
 
+"""
+    bottomup_regression(t, x, max_error[; loss_metric=L₂]) 
+    bottomup_regression(ts, units, max_error[; loss_metric=L₂])
+                    
+Generates a segment series from the time series `t, x` using the bottom-up algorithm,
+generating segments using least-squares linear regression between end-points and with 
+maximum error `max_error`.  The loss metric `loss_metric` will be used to evaluate error.  
+
+Alternatively one can pass a `TimeArray` object directly, in which case one must also 
+specify the units of the resulting segment series (i.e. what period of time should correspond
+to 1.0).
+"""
 function bottomup_regression{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U},
                                                   max_error::AbstractFloat;
-                                                  loss_metric::Function=L₂,
-                                                  return_points::Bool=false)
+                                                  loss_metric::Function=L₂)
     bottomup(t, x, max_error, LinearSegmentRegression, LinearSegment{T,U},
-             loss_metric=loss_metric, return_points=return_points)
+             loss_metric=loss_metric)
+end
+function bottomup_regression{T,U<:Number,N,D,A<:Vector}(ts::TimeArray{U,N,D,A},
+                                                        ::Type{T},
+                                                        max_error::AbstractFloat;
+                                                        loss_metric::Function=L₂,
+                                                        return_timearray::Bool=false)
+    t, x = convertaxis(T, ts)
+    ss = bottomup_regression(t, x, max_error, loss_metric=loss_metric)
+    ss.units = T
+    ss.zero = ts.timestamp[1]
+    if return_timearray
+        f = getfunction(ss)
+        return TimeArray(ss.units, t, f.(t), ss.zero)
+    end
+    ss
 end
 export bottomup_regression
 
