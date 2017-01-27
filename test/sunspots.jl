@@ -22,7 +22,8 @@ ts = ts[find(ts["SpotsTotal"] .≥ 0)]
 # @time ss = topdown_interpolation(ts, Day, MAX_ERROR)
 # @time ss = topdown_regression(ts, Day, MAX_ERROR)
 # @time ss = bottomup_interpolation(ts, Day, MAX_ERROR)
-@time ss = bottomup_regression(ts, Day, MAX_ERROR)
+# @time ss = bottomup_regression(ts, Day, MAX_ERROR)
+@time ss = bottomup_stochastic_interpolation(ts, Day, MAX_ERROR)
 
 f = getfunction(ss)
 ts_segmented = TimeArray(ss)
@@ -39,7 +40,7 @@ l1 = layer(x=ts.timestamp, y=ts.values, Geom.point,
            Theme(default_color=colorant"red"), order=1)
 l2 = layer(x=ts_segmented.timestamp, y=ts_segmented.values, Geom.line,
            Theme(default_color=colorant"blue"), order=2)
-p1 = plot(l1, l2, Guide.xlabel("t (Days)"), Guide.ylabel("SpotsTotal"))
+p1 = plot(l1, l2, Guide.xlabel("t (year)"), Guide.ylabel("SpotsTotal"))
 
 Nview = 400
 k = [(i-1)/ss[end].t1 for i ∈ 1:length(ts_power)]
@@ -47,7 +48,7 @@ l3 = layer(x=k[1:Nview], y=ts_power[1:Nview], Geom.line,
            Theme(default_color=colorant"red"), order=1)
 l4 = layer(x=k[1:Nview], y=ss_power[1:Nview], Geom.line,
            Theme(default_color=colorant"blue"), order=2)
-p2 = plot(l3, l4, Guide.xlabel("1/Day"), Guide.ylabel("Power"), Scale.y_log10)
+p2 = plot(l3, l4, Guide.xlabel("1/day"), Guide.ylabel("Power"), Scale.y_log10)
 
 o = vstack(p1, p2)
 

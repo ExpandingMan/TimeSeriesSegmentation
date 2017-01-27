@@ -19,6 +19,8 @@ The following algorithms are currently available
 * `slidingwindow_interpolation`, `slidingwindow_regression`
 * `topdown_interpolation`, `topdown_regression`
 * `bottomup_interpolation`, `bottomup_regression`
+* `bottomup_stocahstic_interpolation`, `bottomup_stochastic_regression`
+
 `_interpolation` or `_regression` denotes whether the segments generated will be determined
 by linearly interpolating between endpoints, or performing a least-squares linear regression.
 The latter is obviously more accurate (roughly speaking) but in general results in 
@@ -36,6 +38,16 @@ Date(3147, 1, 2), Date(3147, 1, 3)]` converted to floats using `Hour` would be
 `[0.0, 24.0, 48.0]`.  The parameter `max_error` determines the maximum error of a segment
 produced by the algorithm.  The `loss_metric` parameter is the function which should be
 used to determine the error. `L₁, L₂, LInfty` are exported by this package.
+
+### The Stochastic Bottom-Up Algorithm
+The `bottomup_stochastic` algorithm is similar to the bottomup algorithm except instead
+or merging the segments that most reduce the total error on each iteration, it merges
+a random pair of segments the merger of which produces a segment with error less than
+the maximum error.  This can be useful for producing multiple different segmentations from
+the same series with the total error of the segmentation approximation still being controlled.
+This may be useful in cases where the segmentation is being used as a training dataset for
+machine learning.  Note that the `bottomup_stochastic` algorithm uses the Julia `rand`
+function so its seed can be set using `TimeSeriesSegmentation.srand`.
 
 
 ## `SegmentSeries`

@@ -25,6 +25,7 @@ include("segments.jl")
 include("slidingwindow.jl")
 include("topdown.jl")
 include("bottomup.jl")
+include("bottomup_stochastic.jl")
 include("timearray.jl")
 include("fourier.jl") # to be moved elsewhere
 
