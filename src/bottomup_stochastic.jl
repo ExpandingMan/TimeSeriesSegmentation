@@ -1,5 +1,4 @@
 
-# TODO this might get screwed up if we have more segment types
 
 """
     bottomup_stochastic(t, x, max_error, segment_construct, segment_type=LinearSegment
@@ -34,7 +33,7 @@ function bottomup_stochastic{T<:Number,U<:Number,S}(t::Vector{T}, x::Vector{U},
     rand_idx = rand(lowloss_idx)
     rand_cost = merge_costs[rand_idx]
     min_cost, min_idx = findmin(merge_costs)
-    
+
     while min_cost < max_error && length(ss) > 1
         idx_l = ranges[rand_idx][1]
         idx_r = ranges[rand_idx+1][2]  # this should always work because we merged with next
@@ -53,8 +52,10 @@ function bottomup_stochastic{T<:Number,U<:Number,S}(t::Vector{T}, x::Vector{U},
             _compute_merge_cost!(ss, rand_idx, t, x, ranges, merge_segs, merge_costs,
                                  segment_construct, loss_metric)
         end
-        # TODO this should be replaced
-        lowloss_idx = [i for i ∈ 1:length(merge_costs) if merge_costs[i] < max_error]
+        # the following line is slightly slower, but easier to understand
+        # lowloss_idx = [i for i ∈ 1:length(merge_costs) if merge_costs[i] < max_error]
+        # the following line is faster, only searches part of merge_costs
+        lowloss_idx = _update_lowloss_idx(lowloss_idx, merge_costs, rand_idx, max_error)
         if length(lowloss_idx) == 0
             return ss
         end
@@ -65,6 +66,21 @@ function bottomup_stochastic{T<:Number,U<:Number,S}(t::Vector{T}, x::Vector{U},
     ss
 end
 export bottomup_stochastic
+
+
+function _update_lowloss_idx(lowloss_idx::Vector, merge_costs::Vector, rand_idx::Integer,
+                             max_error::AbstractFloat)
+    idx = max(rand_idx-1, 1)
+    badbeyond = searchsortedfirst(lowloss_idx, idx) 
+    left_half = lowloss_idx[1:(badbeyond-1)]
+    if length(left_half) == 0
+        left_idx = 1
+    else
+        left_idx = left_half[end] + 1
+    end
+    right_half = [i for i ∈ left_idx:length(merge_costs) if merge_costs[i] < max_error]
+    [left_half; right_half]
+end
 
 
 

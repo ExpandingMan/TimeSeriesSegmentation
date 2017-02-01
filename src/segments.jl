@@ -140,6 +140,7 @@ done(ss::SegmentSeries, state) = done(ss.segments, state)
 eltype(ss::SegmentSeries) = eltype(ss.segments)
 length(ss::SegmentSeries) = length(ss.segments)
 endof(ss::SegmentSeries) = endof(ss.segments)
+eltype{S}(ss::SegmentSeries{S}) = S
 
 getindex(ss::SegmentSeries, i::Integer) = getindex(ss.segments, i)
 setindex!(ss::SegmentSeries, v, i::Integer) = setindex!(ss.segments, v, i)
@@ -284,7 +285,10 @@ function loss{T<:Number,U<:Number}(s::Union{LinearSegment, SegmentSeries},
                                    t::Vector{T}, x::Vector{U})
     loss(L₂, s, t, x)
 end
-
+function loss(f::Function, ss::SegmentSeries, ts::TimeArray)
+    t, x = convertaxis(ss.units, ts, ss.zero)
+    loss(f, ss, t, x)
+end
 export slope, intercept, loss
 
 

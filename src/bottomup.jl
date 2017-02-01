@@ -74,7 +74,7 @@ function _compute_merge_cost!{T<:Number,U<:Number}(ss::SegmentSeries, i::Integer
         idx_l = ranges[i][1]
         idx_r = ranges[i+1][2]
         seg, cost = merge(ss[i:(i+1)], t[idx_l:idx_r], x[idx_l:idx_r],
-                          segment_construct, loss_metric=loss_metric)
+                          segment_construct, loss_metric)
     end
     merge_segs[i] = seg
     merge_costs[i] = cost
@@ -84,7 +84,7 @@ end
 
 # this might belong in segments.jl but it's nice to have here
 function merge{T<:Number,U<:Number,S}(ss::SegmentSeries{S}, t::Vector{T}, x::Vector{U},
-                                      segment_construct::Function;
+                                      segment_construct::Function,
                                       loss_metric::Function=L₂)
     @assert length(ss) == 2 "Can only merge two segments."
     seg = segment_construct(t, x)
