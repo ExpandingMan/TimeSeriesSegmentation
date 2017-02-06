@@ -29,6 +29,15 @@ end
 export LinearSegment
 
 
+function makeΔSegment{T<:Number}(t0::T, x0::T, Δt::T, Δx::T)
+    LinearSegment{T,T}(t0, x0, t0 + Δt, x0 + Δx)
+end
+function makeΔSegment{T<:Number}(prev_seg::LinearSegment, Δt::T, Δx::T) 
+    makeΔSegment(prev_seg.t1, prev_seg.x1, Δt, Δx)
+end
+export makeΔSegment
+
+
 """
     type SegmentSeries
 
@@ -67,6 +76,8 @@ type SegmentSeries{S<:AbstractSegment} <: AbstractSegmentSeries
 end
 export SegmentSeries
 
+SegmentSeries{S<:AbstractSegment}(segs::Vector{S}) = SegmentSeries{S}(segs)
+
 
 # creates a segment series out of a time series
 # conversions from TimeArray are found in timearray.jl
@@ -87,6 +98,24 @@ end
 function SegmentSeries{T<:Number,U<:Number}(t::Vector{T}, x::Vector{U})
     SegmentSeries(t, x, LinearSegmentInterpolation)
 end
+
+
+function makeΔSegmentSeries{T<:Number}(t0::T, x0::T, Δts::Vector{T}, Δxs::Vector{T})
+    o = Vector{LinearSegment{T,T}}(length(Δts))
+    o[1] = makeΔSegment(t0, x0, Δts[1], Δxs[1])
+    for i ∈ 2:length(o)
+        o[i] = makeΔSegment(o[i-1], Δts[i], Δxs[i])
+    end
+    SegmentSeries(o)
+end
+function makeΔSegmentSeries{T<:Number,D<:Dates.Period}(t0::DateTime, x0::T, Δts::Vector{T}, 
+                                                       Δxs::Vector{T}, units::D)
+    ss = makeΔSegmentSeries(zero(T), x0, Δts, Δxs)
+    ss.zero = t0
+    ss.units = units
+    ss
+end
+export makeΔSegmentSeries
 
 
 # checks whether a segment series is continuous
@@ -152,6 +181,7 @@ insert!(ss::SegmentSeries, i, v) = insert!(ss.segments, i, v)
 function getindex{S,T<:Integer}(ss::SegmentSeries{S}, r::UnitRange{T})
     o = SegmentSeries{S}(ss.segments[r])
     o.cont = ss.cont
+    o.zero = ss.zero
     if isdefined(ss, :units)
         o.units = ss.units
     end
