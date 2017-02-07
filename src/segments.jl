@@ -303,10 +303,19 @@ function loss{T<:Number,U<:Number}(loss_func::Function, f::Function,
     xPrime = f.(t)
     loss_func(xPrime - x)
 end
-function loss{T<:Number,U<:Number}(loss_func::Function, 
-                                   s::Union{LinearSegment, SegmentSeries},
+function loss{T<:Number,U<:Number}(loss_func::Function, s::LinearSegment,
                                    t::Vector{T}, x::Vector{U})
+    if t[1] < s.t0 || t[end] > s.t1
+        throw(ArgumentError("Argument out of function domain when computing loss."))
+    end
     loss(loss_func, getfunction(s), t, x)
+end
+function loss{T<:Number,U<:Number}(loss_func::Function, ss::SegmentSeries,
+                                   t::Vector{T}, x::Vector{U})
+    if t[1] < ss[1].t0 || t[end] > ss[end].t1
+        throw(ArgumentError("Argument out of function domain when computing loss."))
+    end
+    loss(loss_func, getfunction(ss), t, x)
 end
 function loss{T<:Number,U<:Number}(f::Function, t::Vector{T}, x::Vector{U})
     loss(L₂, f, t, x)
